@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ contractor.name }} - GAF Sales Intelligence</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .detail-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .location {
+            color: #718096;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+
+        .rating-section {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+        }
+
+        .rating {
+            color: #f59e0b;
+            font-weight: 600;
+            font-size: 1.5em;
+        }
+
+        .reviews {
+            color: #718096;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            color: #2d3748;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .section p {
+            color: #4a5568;
+            line-height: 1.8;
+            font-size: 1.05em;
+        }
+
+        .info-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .info-value {
+            color: #667eea;
+        }
+
+        .certifications {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .cert-badge {
+            background: #e0e7ff;
+            color: #5568d3;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 500;
+        }
+
+        .insights-box {
+            background: #f0f9ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .insights-box h3 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .insights-box p {
+            color: #4a5568;
+            line-height: 1.8;
+        }
+
+        .profile-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .profile-link:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+
+        <div class="detail-card">
+            <h1>{{ contractor.name }}</h1>
+            <p class="location">📍 {{ contractor.location }}</p>
+
+            <div class="rating-section">
+                <span class="rating">⭐ {{ contractor.rating if contractor.rating else 'N/A' }}</span>
+                <span class="reviews">({{ contractor.reviews_count if contractor.reviews_count else 0 }} reviews)</span>
+            </div>
+
+            {% if contractor.phone %}
+            <div class="section">
+                <div class="info-row">
+                    <span class="info-label">📞 Phone:</span>
+                    <span class="info-value">{{ contractor.phone }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if contractor.distance %}
+            <div class="section">
+                <div class="info-row">
+                    <span class="info-label">📏 Distance:</span>
+                    <span class="info-value">{{ contractor.distance }} miles</span>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if contractor.certifications and contractor.certifications|length > 0 %}
+            <div class="section">
+                <h2>Certifications</h2>
+                <div class="certifications">
+                    {% for cert in contractor.certifications %}
+                    <span class="cert-badge">{{ cert }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if contractor.description %}
+            <div class="section">
+                <h2>About</h2>
+                <p>{{ contractor.description }}</p>
+            </div>
+            {% endif %}
+
+            {% if contractor.ai_insights and contractor.ai_insights|length > 0 %}
+            <div class="section">
+                <h2>AI Insights</h2>
+                {% for insight in contractor.ai_insights %}
+                <div class="insights-box">
+                    <h3>💡 Sales Intelligence</h3>
+                    <p>{{ insight }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if contractor.profile_url %}
+            <a href="{{ contractor.profile_url }}" target="_blank" class="profile-link">View on GAF.com →</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

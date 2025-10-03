@@ -1,67 +1,53 @@
 """
-Flask API for GAF Sales Intelligence Dashboard
+Flask Web App for GAF Sales Intelligence Dashboard
 """
 import sys
 sys.path.insert(0, '/app')
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+from flask import Flask, render_template, request, jsonify
 from backend.db.connection import DatabaseManager
 from backend.db.models import Contractor, ScrapeRun
+from backend.ai.insights_generator import InsightsGenerator
 from sqlalchemy import desc, or_
+import os
+from openai import OpenAI
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+app = Flask(__name__, template_folder='templates')
 
 db_manager = DatabaseManager()
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'service': 'GAF Sales Intelligence API'})
-
-
-@app.route('/api/contractors', methods=['GET'])
-def get_contractors():
-    """
-    Get all contractors with optional filtering
-
-    Query params:
-    - location: Filter by location (city/state)
-    - min_rating: Minimum rating (0-5)
-    - min_reviews: Minimum review count
-    - limit: Max results (default 100)
-    - offset: Pagination offset (default 0)
-    - search: Search in name or location
-    - sort_by: Sort field (rating, reviews_count, name)
-    - sort_order: asc or desc
-    """
+@app.route('/')
+def index():
+    """Main dashboard page"""
     try:
-        # Get query parameters
-        location = request.args.get('location')
+        # Get query parameters for filtering
+        search = request.args.get('search', '')
+        location = request.args.get('location', '')
         min_rating = request.args.get('min_rating', type=float)
-        min_reviews = request.args.get('min_reviews', type=int)
-        limit = request.args.get('limit', 100, type=int)
-        offset = request.args.get('offset', 0, type=int)
-        search = request.args.get('search')
         sort_by = request.args.get('sort_by', 'rating')
-        sort_order = request.args.get('sort_order', 'desc')
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
 
         with db_manager.get_session() as session:
-            # Build query
+            # Get stats
+            total_contractors = session.query(Contractor).count()
+            avg_rating = session.query(Contractor).filter(
+                Contractor.rating.isnot(None)
+            ).with_entities(Contractor.rating).all()
+            avg_rating_value = sum([r[0] for r in avg_rating]) / len(avg_rating) if avg_rating else 0
+
+            # Get unique locations for filter dropdown
+            locations = session.query(Contractor.location).distinct().filter(
+                Contractor.location.isnot(None)
+            ).all()
+            all_locations = sorted([loc[0] for loc in locations if loc[0]])
+
+            # Build contractors query
             query = session.query(Contractor)
 
             # Apply filters
-            if location:
-                query = query.filter(Contractor.location.ilike(f'%{location}%'))
-
-            if min_rating:
-                query = query.filter(Contractor.rating >= min_rating)
-
-            if min_reviews:
-                query = query.filter(Contractor.reviews_count >= min_reviews)
-
             if search:
                 query = query.filter(
                     or_(
@@ -69,34 +55,61 @@ def get_contractors():
                         Contractor.location.ilike(f'%{search}%')
                     )
                 )
+            if location:
+                query = query.filter(Contractor.location.ilike(f'%{location}%'))
+            if min_rating:
+                query = query.filter(Contractor.rating >= min_rating)
 
             # Apply sorting
             sort_column = getattr(Contractor, sort_by, Contractor.rating)
-            if sort_order == 'desc':
-                query = query.order_by(desc(sort_column))
-            else:
-                query = query.order_by(sort_column)
+            query = query.order_by(desc(sort_column))
 
-            # Get total count before pagination
+            # Pagination
             total = query.count()
+            offset = (page - 1) * per_page
+            contractors = query.limit(per_page).offset(offset).all()
 
-            # Apply pagination
-            contractors = query.limit(limit).offset(offset).all()
+            # Calculate pagination info
+            total_pages = (total + per_page - 1) // per_page
 
-            return jsonify({
-                'contractors': [c.to_dict() for c in contractors],
-                'total': total,
-                'limit': limit,
-                'offset': offset
-            })
+            return render_template(
+                'index.html',
+                contractors=contractors,
+                total_contractors=total_contractors,
+                avg_rating=round(avg_rating_value, 2),
+                all_locations=all_locations,
+                search=search,
+                location=location,
+                min_rating=min_rating or '',
+                sort_by=sort_by,
+                page=page,
+                total_pages=total_pages,
+                total=total
+            )
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return f"Error: {str(e)}", 500
 
 
-@app.route('/api/contractors/<int:contractor_id>', methods=['GET'])
-def get_contractor(contractor_id):
-    """Get single contractor by ID"""
+@app.route('/contractor/<int:contractor_id>')
+def contractor_detail(contractor_id):
+    """Contractor detail page"""
+    try:
+        with db_manager.get_session() as session:
+            contractor = session.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+            if not contractor:
+                return "Contractor not found", 404
+
+            return render_template('contractor_detail.html', contractor=contractor)
+
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
+
+@app.route('/api/generate-email/<int:contractor_id>', methods=['POST'])
+def generate_email(contractor_id):
+    """Generate sales email for contractor using GPT"""
     try:
         with db_manager.get_session() as session:
             contractor = session.query(Contractor).filter(Contractor.id == contractor_id).first()
@@ -104,58 +117,54 @@ def get_contractor(contractor_id):
             if not contractor:
                 return jsonify({'error': 'Contractor not found'}), 404
 
-            return jsonify(contractor.to_dict())
+            # Build prompt for GPT
+            prompt = f"""Generate a personalized B2B sales email from a roofing materials distributor to this contractor.
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+Contractor Info:
+- Name: {contractor.name}
+- Location: {contractor.location}
+- Rating: {contractor.rating} stars ({contractor.reviews_count} reviews)
+- Certifications: {', '.join(contractor.certifications) if contractor.certifications else 'None'}
+- Description: {contractor.description[:500] if contractor.description else 'N/A'}
 
+Sales Person Placeholders (use exactly as shown):
+- {{{{sales_person_name}}}}
+- {{{{sales_company}}}}
+- {{{{title}}}}
+- {{{{mobile}}}} (format as xxx-xxx-xxxx)
+- {{{{email}}}}
+- {{{{website}}}}
 
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """Get dashboard statistics"""
-    try:
-        with db_manager.get_session() as session:
-            total_contractors = session.query(Contractor).count()
+Requirements:
+1. Subject line: "[Contractor Name] × {{{{sales_company}}}} — [brief value prop relevant to their work]"
+2. Personalize based on their rating, certifications, and specializations
+3. Value proposition: premium materials, reliable delivery, competitive pricing
+4. Mention specific materials they likely use (asphalt shingles, metal, flat roof systems, etc.)
+5. Low-pressure CTA: ask for material list or 10-15 min call
+6. Professional but friendly tone
+7. Keep under 200 words
+8. Use placeholder variables exactly as shown above (with double curly braces)
 
-            # Average rating
-            avg_rating = session.query(Contractor).filter(
-                Contractor.rating.isnot(None)
-            ).with_entities(Contractor.rating).all()
-            avg_rating_value = sum([r[0] for r in avg_rating]) / len(avg_rating) if avg_rating else 0
+Output ONLY the email (subject + body), no additional commentary."""
 
-            # Top rated contractors (5 stars with most reviews)
-            top_contractors = session.query(Contractor).filter(
-                Contractor.rating == 5.0
-            ).order_by(desc(Contractor.reviews_count)).limit(10).all()
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a B2B sales email writer for roofing material distributors. Write personalized, professional emails that are concise and action-oriented."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=400
+            )
 
-            # Recent scrape runs
-            recent_runs = session.query(ScrapeRun).order_by(
-                desc(ScrapeRun.started_at)
-            ).limit(5).all()
-
-            return jsonify({
-                'total_contractors': total_contractors,
-                'average_rating': round(avg_rating_value, 2),
-                'top_contractors': [c.to_dict() for c in top_contractors],
-                'recent_scrape_runs': [run.to_dict() for run in recent_runs]
-            })
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/locations', methods=['GET'])
-def get_locations():
-    """Get unique locations for filtering"""
-    try:
-        with db_manager.get_session() as session:
-            locations = session.query(Contractor.location).distinct().filter(
-                Contractor.location.isnot(None)
-            ).all()
-
-            return jsonify({
-                'locations': sorted([loc[0] for loc in locations if loc[0]])
-            })
+            email_content = response.choices[0].message.content.strip()
+            return jsonify({'email': email_content})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -60,9 +60,9 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  api:
+  web:
     build: .
-    container_name: gaf_api
+    container_name: gaf_web
     volumes:
       - ./backend:/app/backend
     environment:
@@ -71,22 +71,13 @@ services:
     env_file:
       - .env
     command: python backend/api/app.py
+    ports:
+      - "3000:5000"
     networks:
       - gaf_network
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
-
-  frontend:
-    build: ./frontend
-    container_name: gaf_frontend
-    ports:
-      - "3000:80"
-    networks:
-      - gaf_network
-    depends_on:
-      - api
     restart: unless-stopped
 
 networks:
