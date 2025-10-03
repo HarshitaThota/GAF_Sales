@@ -106,7 +106,7 @@ docker-compose up --build
 │   │   ├── gaf_scraper.py           # Full scraper with profile visits
 │   │   └── incremental_scraper.py   # Smart incremental refresh
 │   ├── db/
-│   │   ├── models.py                # SQLAlchemy models
+│   │   ├── models.py                # SQL models
 │   │   ├── connection.py            # Database manager
 │   │   └── init.sql                 # Database schema
 │   ├── ai/

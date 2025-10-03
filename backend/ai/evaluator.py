@@ -87,46 +87,46 @@ You must return ONLY valid JSON with numeric scores and brief feedback."""
         """Build evaluation prompt for GPT-4"""
         return f"""Evaluate this AI-generated sales insight on a scale of 1-5 for each dimension.
 
-CONTRACTOR DATA:
-- Name: {contractor_data.get('name')}
-- Location: {contractor_data.get('location')}
-- Rating: {contractor_data.get('rating')} stars ({contractor_data.get('reviews_count')} reviews)
-- Certifications: {', '.join(contractor_data.get('certifications', [])) if contractor_data.get('certifications') else 'None'}
-- Description: {contractor_data.get('description', 'N/A')[:300]}
+            CONTRACTOR DATA:
+            - Name: {contractor_data.get('name')}
+            - Location: {contractor_data.get('location')}
+            - Rating: {contractor_data.get('rating')} stars ({contractor_data.get('reviews_count')} reviews)
+            - Certifications: {', '.join(contractor_data.get('certifications', [])) if contractor_data.get('certifications') else 'None'}
+            - Description: {contractor_data.get('description', 'N/A')[:300]}
 
-GENERATED INSIGHT:
-{insight}
+            GENERATED INSIGHT:
+            {insight}
 
-EVALUATION CRITERIA:
+            EVALUATION CRITERIA:
 
-1. **Accuracy & Relevance (1-5)**
-   - Does it use correct contractor data (name, rating, certifications)?
-   - Is all information factually accurate?
-   - Is it relevant to B2B roofing materials sales?
+            1. **Accuracy & Relevance (1-5)**
+            - Does it use correct contractor data (name, rating, certifications)?
+            - Is all information factually accurate?
+            - Is it relevant to B2B roofing materials sales?
 
-2. **Actionability (1-5)**
-   - Does it provide clear next steps for sales team?
-   - Does it identify specific materials/services the contractor might need?
-   - Does it suggest concrete engagement approaches?
+            2. **Actionability (1-5)**
+            - Does it provide clear next steps for sales team?
+            - Does it identify specific materials/services the contractor might need?
+            - Does it suggest concrete engagement approaches?
 
-3. **Personalization (1-5)**
-   - Is it tailored to this contractor's specialization?
-   - Does it reference unique strengths (rating, experience, certifications)?
-   - Does it avoid generic template language?
+            3. **Personalization (1-5)**
+            - Is it tailored to this contractor's specialization?
+            - Does it reference unique strengths (rating, experience, certifications)?
+            - Does it avoid generic template language?
 
-4. **Conciseness (1-5)**
-   - Is it appropriately brief (under 200 words)?
-   - Does it avoid fluff and repetition?
-   - Is it scannable for busy salespeople?
+            4. **Conciseness (1-5)**
+            - Is it appropriately brief (under 200 words)?
+            - Does it avoid fluff and repetition?
+            - Is it scannable for busy salespeople?
 
-Return your evaluation as JSON with this exact structure:
-{{
-    "accuracy": <score 1-5>,
-    "actionability": <score 1-5>,
-    "personalization": <score 1-5>,
-    "conciseness": <score 1-5>,
-    "feedback": "<1-2 sentence summary of strengths and weaknesses>"
-}}"""
+            Return your evaluation as JSON with this exact structure:
+            {{
+                "accuracy": <score 1-5>,
+                "actionability": <score 1-5>,
+                "personalization": <score 1-5>,
+                "conciseness": <score 1-5>,
+                "feedback": "<1-2 sentence summary of strengths and weaknesses>"
+            }}"""
 
     def evaluate_all_insights(self, limit: int = None):
         """

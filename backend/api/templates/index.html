@@ -455,6 +455,7 @@
                 <div class="form-group">
                     <label for="sort_by">Sort By</label>
                     <select id="sort_by" name="sort_by">
+                        <option value="lead_quality" {% if sort_by == 'lead_quality' %}selected{% endif %}>Lead Quality (Best First)</option>
                         <option value="rating" {% if sort_by == 'rating' %}selected{% endif %}>Rating</option>
                         <option value="reviews_count" {% if sort_by == 'reviews_count' %}selected{% endif %}>Reviews</option>
                         <option value="name" {% if sort_by == 'name' %}selected{% endif %}>Name</option>

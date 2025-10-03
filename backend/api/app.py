@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, jsonify
 from backend.db.connection import DatabaseManager
 from backend.db.models import Contractor, ScrapeRun
 from backend.ai.insights_generator import InsightsGenerator
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func
 import os
 from openai import OpenAI
 
@@ -26,7 +26,7 @@ def index():
         search = request.args.get('search', '')
         location = request.args.get('location', '')
         min_rating = request.args.get('min_rating', type=float)
-        sort_by = request.args.get('sort_by', 'rating')
+        sort_by = request.args.get('sort_by', 'lead_quality')  # Default to best leads first
         page = request.args.get('page', 1, type=int)
         per_page = 20
 
@@ -61,8 +61,18 @@ def index():
                 query = query.filter(Contractor.rating >= min_rating)
 
             # Apply sorting
-            sort_column = getattr(Contractor, sort_by, Contractor.rating)
-            query = query.order_by(desc(sort_column))
+            if sort_by == 'lead_quality':
+                # Sort by lead quality: rating * review_count (best leads first)
+                # Use COALESCE to treat NULL as 0, pushing them to the bottom
+                lead_score = func.coalesce(Contractor.rating, 0) * func.coalesce(Contractor.reviews_count, 0)
+                query = query.order_by(desc(lead_score))
+            elif sort_by in ['rating', 'reviews_count']:
+                # For rating and reviews, put NULLs last (highest to lowest, NULLs at bottom)
+                sort_column = getattr(Contractor, sort_by)
+                query = query.order_by(desc(func.coalesce(sort_column, 0)))
+            else:
+                sort_column = getattr(Contractor, sort_by, Contractor.rating)
+                query = query.order_by(desc(sort_column))
 
             # Pagination
             total = query.count()
