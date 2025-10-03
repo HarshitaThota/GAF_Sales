@@ -39,6 +39,56 @@ services:
       postgres:
         condition: service_healthy
 
+  scheduler:
+    build: .
+    container_name: gaf_scheduler
+    volumes:
+      - ./data:/app/data
+      - ./backend:/app/backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://gaf_user:gaf_password@postgres:5432/gaf_sales
+    env_file:
+      - .env
+    command: python backend/scheduler/refresh_scheduler.py
+    networks:
+      - gaf_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scraper:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    build: .
+    container_name: gaf_api
+    volumes:
+      - ./backend:/app/backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://gaf_user:gaf_password@postgres:5432/gaf_sales
+    env_file:
+      - .env
+    command: python backend/api/app.py
+    networks:
+      - gaf_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: gaf_frontend
+    ports:
+      - "3000:80"
+    networks:
+      - gaf_network
+    depends_on:
+      - api
+    restart: unless-stopped
+
 networks:
   gaf_network:
     driver: bridge

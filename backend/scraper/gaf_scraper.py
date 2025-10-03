@@ -157,19 +157,8 @@ class GAFContractorScraper:
 
             logger.info(f"Successfully scraped {len(contractors)} contractors across {page_num} pages")
 
-            # Second pass: Enrich with descriptions from profile pages
-            logger.info("Starting second pass to fetch descriptions from profile pages...")
-            for contractor in contractors:
-                if contractor.get('profile_url'):
-                    try:
-                        description, certifications = self._scrape_profile_description(contractor['profile_url'])
-                        contractor['description'] = description
-                        contractor['certifications'] = certifications
-                        logger.info(f"Fetched description for: {contractor.get('name')}")
-                    except Exception as e:
-                        logger.error(f"Error fetching description for {contractor.get('name')}: {str(e)}")
-                        continue
-
+            # Note: Profile scraping moved to separate step for incremental refresh
+            # Use scrape_with_profiles() if you need full data in one call
             return contractors
 
         except TimeoutException:
@@ -264,6 +253,39 @@ class GAFContractorScraper:
             logger.debug(f"Could not find profile URL for contractor {idx + 1}")
 
         return data
+
+    def scrape_with_profiles(self, zipcode, distance=25, max_results=None):
+        """
+        Scrape contractors with full profile data (listing + profiles)
+
+        This is the original behavior - scrapes listing AND visits each profile.
+        For incremental refresh, use scrape_contractors() + selective profile visits.
+
+        Args:
+            zipcode: ZIP code to search
+            distance: Distance radius in miles
+            max_results: Maximum number of results
+
+        Returns:
+            List of contractor dictionaries with descriptions and certifications
+        """
+        # Get listing data
+        contractors = self.scrape_contractors(zipcode, distance, max_results)
+
+        # Enrich with profile data
+        logger.info("Enriching with profile descriptions and certifications...")
+        for contractor in contractors:
+            if contractor.get('profile_url'):
+                try:
+                    description, certifications = self._scrape_profile_description(contractor['profile_url'])
+                    contractor['description'] = description
+                    contractor['certifications'] = certifications
+                    logger.info(f"Fetched description for: {contractor.get('name')}")
+                except Exception as e:
+                    logger.error(f"Error fetching description for {contractor.get('name')}: {str(e)}")
+                    continue
+
+        return contractors
 
     def _scrape_profile_description(self, profile_url):
         """Visit contractor profile page and extract description"""
@@ -385,10 +407,10 @@ def main():
         # Configuration
         zipcode = "10013"
         distance = 25
-        max_results = 10  # Limit for testing with profile scraping
+        max_results = 10  # Limit to 10 for testing (change to None for full scrape)
 
-        # Scrape contractors
-        contractors = scraper.scrape_contractors(
+        # Scrape contractors with full profiles
+        contractors = scraper.scrape_with_profiles(
             zipcode=zipcode,
             distance=distance,
             max_results=max_results

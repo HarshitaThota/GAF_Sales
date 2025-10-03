@@ -110,6 +110,34 @@ class DatabaseManager:
         return profile_url  # Fallback to full URL
 
     @staticmethod
+    def clean_phone_number(phone: str) -> str:
+        """
+        Clean and format phone number to +1 (xxx) xxx-xxxx format
+
+        Args:
+            phone: Raw phone number string
+
+        Returns:
+            Formatted phone number or None if invalid
+        """
+        if not phone:
+            return None
+
+        # Remove all non-digit characters
+        digits = ''.join(filter(str.isdigit, phone))
+
+        # Handle different lengths
+        if len(digits) == 11 and digits.startswith('1'):
+            # Remove leading 1
+            digits = digits[1:]
+        elif len(digits) != 10:
+            # Invalid phone number length
+            return phone  # Return original if can't parse
+
+        # Format as +1 (xxx) xxx-xxxx
+        return f"+1 ({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+
+    @staticmethod
     def clean_certifications(certifications: List[str]) -> List[str]:
         """
         Clean certification data by removing duplicates and unnecessary prefixes
@@ -183,6 +211,9 @@ class DatabaseManager:
         # Extract GAF ID from URL
         gaf_id = self.extract_gaf_id(profile_url)
 
+        # Clean phone number
+        cleaned_phone = self.clean_phone_number(contractor_data.get('phone'))
+
         # Clean certifications data
         cleaned_certs = self.clean_certifications(contractor_data.get('certifications', []))
 
@@ -196,7 +227,7 @@ class DatabaseManager:
             if existing.data_hash != data_hash:
                 # Update existing contractor
                 existing.name = contractor_data.get('name')
-                existing.phone = contractor_data.get('phone')
+                existing.phone = cleaned_phone
                 existing.location = contractor_data.get('city')  # city from scraper becomes location
                 existing.distance = contractor_data.get('distance')
                 existing.rating = contractor_data.get('rating')
@@ -216,7 +247,7 @@ class DatabaseManager:
             new_contractor = Contractor(
                 gaf_id=gaf_id,
                 name=contractor_data.get('name'),
-                phone=contractor_data.get('phone'),
+                phone=cleaned_phone,
                 location=contractor_data.get('city'),  # city from scraper becomes location
                 distance=contractor_data.get('distance'),
                 rating=contractor_data.get('rating'),

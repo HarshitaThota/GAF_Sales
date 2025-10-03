@@ -38,9 +38,7 @@ class Contractor(Base):
     certifications = Column(JSONB)  # Array of certification strings
 
     # AI-generated insights (to be populated later)
-    ai_summary = Column(Text)  # Short 2-3 sentence summary
-    ai_talking_points = Column(JSONB)  # Array of key talking points for sales
-    ai_insights = Column(Text)  # Full paragraph of insights
+    ai_insights = Column(JSONB)  # Array of key talking points for sales
 
     # Metadata for data quality
     data_hash = Column(String(64))  # MD5 hash for change detection
@@ -73,8 +71,6 @@ class Contractor(Base):
             'profile_url': self.profile_url,
             'description': self.description,
             'certifications': self.certifications,
-            'ai_summary': self.ai_summary,
-            'ai_talking_points': self.ai_talking_points,
             'ai_insights': self.ai_insights,
             'data_hash': self.data_hash,
             'created_at': self.created_at.isoformat() if self.created_at else None,
