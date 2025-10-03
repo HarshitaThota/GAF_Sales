@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS contractors (
     -- AI-generated insights (to be populated later)
     ai_insights JSONB,  -- Array of sales talking points
 
+    -- LLM Evaluation Scores (GPT-as-Judge)
+    eval_accuracy FLOAT,  -- Accuracy & Relevance score (1-5)
+    eval_actionability FLOAT,  -- Actionability score (1-5)
+    eval_personalization FLOAT,  -- Personalization score (1-5)
+    eval_conciseness FLOAT,  -- Conciseness score (1-5)
+    eval_overall FLOAT,  -- Weighted average score
+    eval_feedback TEXT,  -- GPT's qualitative feedback
+    eval_timestamp TIMESTAMP,  -- When evaluation was performed
+
     -- Metadata for data quality tracking
     data_hash VARCHAR(64),  -- MD5 hash of key fields for change detection
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

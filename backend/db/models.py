@@ -1,7 +1,7 @@
 """
 Database models for GAF Sales Intelligence Platform
 """
-from sqlalchemy import Column, Integer, String, Text, DECIMAL, TIMESTAMP, CheckConstraint, Index
+from sqlalchemy import Column, Integer, String, Text, DECIMAL, Float, TIMESTAMP, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
@@ -39,6 +39,15 @@ class Contractor(Base):
 
     # AI-generated insights (to be populated later)
     ai_insights = Column(JSONB)  # Array of key talking points for sales
+
+    # LLM Evaluation Scores (GPT-as-Judge)
+    eval_accuracy = Column(Float)  # Accuracy & Relevance score (1-5)
+    eval_actionability = Column(Float)  # Actionability score (1-5)
+    eval_personalization = Column(Float)  # Personalization score (1-5)
+    eval_conciseness = Column(Float)  # Conciseness score (1-5)
+    eval_overall = Column(Float)  # Weighted average score
+    eval_feedback = Column(Text)  # GPT's qualitative feedback
+    eval_timestamp = Column(TIMESTAMP)  # When evaluation was performed
 
     # Metadata for data quality
     data_hash = Column(String(64))  # MD5 hash for change detection

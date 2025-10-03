@@ -107,6 +107,51 @@ def contractor_detail(contractor_id):
         return f"Error: {str(e)}", 500
 
 
+@app.route('/evaluation')
+def evaluation_dashboard():
+    """LLM Evaluation Dashboard"""
+    try:
+        with db_manager.get_session() as session:
+            # Get all contractors with evaluations
+            contractors = session.query(Contractor).filter(
+                Contractor.eval_overall.isnot(None)
+            ).order_by(desc(Contractor.eval_overall)).all()
+
+            # Calculate aggregate stats
+            if contractors:
+                avg_accuracy = sum(c.eval_accuracy for c in contractors) / len(contractors)
+                avg_actionability = sum(c.eval_actionability for c in contractors) / len(contractors)
+                avg_personalization = sum(c.eval_personalization for c in contractors) / len(contractors)
+                avg_conciseness = sum(c.eval_conciseness for c in contractors) / len(contractors)
+                avg_overall = sum(c.eval_overall for c in contractors) / len(contractors)
+            else:
+                avg_accuracy = avg_actionability = avg_personalization = avg_conciseness = avg_overall = 0
+
+            # Get total counts
+            total_insights = session.query(Contractor).filter(
+                Contractor.ai_insights.isnot(None)
+            ).count()
+
+            evaluated = len(contractors)
+            pending = total_insights - evaluated
+
+            return render_template(
+                'evaluation.html',
+                contractors=contractors,
+                avg_accuracy=round(avg_accuracy, 2),
+                avg_actionability=round(avg_actionability, 2),
+                avg_personalization=round(avg_personalization, 2),
+                avg_conciseness=round(avg_conciseness, 2),
+                avg_overall=round(avg_overall, 2),
+                total_insights=total_insights,
+                evaluated=evaluated,
+                pending=pending
+            )
+
+    except Exception as e:
+        return f"Error: {str(e)}", 500
+
+
 @app.route('/api/generate-email/<int:contractor_id>', methods=['POST'])
 def generate_email(contractor_id):
     """Generate sales email for contractor using GPT"""

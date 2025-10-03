@@ -87,19 +87,19 @@ class InsightsGenerator:
 
         prompt = f"""Generate a brief sales insight (2-3 sentences) for this roofing contractor:
 
-Contractor: {name}
-Location: {location}
-Rating: {rating} stars ({reviews_count} reviews)
-Certifications: {certs_str}
-Description: {description if description else "No description provided"}
+            Contractor: {name}
+            Location: {location}
+            Rating: {rating} stars ({reviews_count} reviews)
+            Certifications: {certs_str}
+            Description: {description if description else "No description provided"}
 
-Focus on:
-- Their reputation and market standing
-- Quality indicators (rating, certifications, experience)
-- Potential as a B2B customer for roofing materials
-- Any unique strengths or specializations
+            Focus on:
+            - Their reputation and market standing
+            - Quality indicators (rating, certifications, experience)
+            - Potential as a B2B customer for roofing materials
+            - Any unique strengths or specializations
 
-Keep it professional and concise."""
+            Keep it professional and concise."""
 
         return prompt
 
