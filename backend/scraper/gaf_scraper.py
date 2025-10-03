@@ -436,7 +436,7 @@ def main():
         # Configuration
         zipcode = "10013"
         distance = 25
-        max_results = 10  # Limit to 10 for testing (change to None for full scrape)
+        max_results = None  # None for full scrape (~89 contractors)
 
         # Scrape contractors with full profiles
         contractors = scraper.scrape_with_profiles(
