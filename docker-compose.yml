@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: gaf_postgres
+    environment:
+      - POSTGRES_DB=gaf_sales
+      - POSTGRES_USER=gaf_user
+      - POSTGRES_PASSWORD=gaf_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - gaf_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gaf_user -d gaf_sales"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   scraper:
     build: .
     container_name: gaf_scraper
@@ -9,12 +29,19 @@ services:
       - ./backend:/app/backend
     environment:
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://gaf_user:gaf_password@postgres:5432/gaf_sales
     env_file:
       - .env
     command: python backend/scraper/gaf_scraper.py
     networks:
       - gaf_network
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 networks:
   gaf_network:
     driver: bridge
+
+volumes:
+  postgres_data:

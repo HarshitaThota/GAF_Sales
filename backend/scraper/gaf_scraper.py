@@ -3,6 +3,8 @@ import time
 import tempfile
 import shutil
 import re
+import os
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -10,6 +12,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import logging
+
+import sys
+sys.path.insert(0, '/app')
+
+from backend.db.connection import DatabaseManager
+from backend.db.models import ScrapeRun
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,7 +88,8 @@ class GAFContractorScraper:
             seen_contractors = set()  # Track contractor names to detect duplicates
 
             # Scrape all pages (approximately 9 pages with 10 results each for 90 total)
-            while page_num <= max_pages:
+            reached_limit = False
+            while page_num <= max_pages and not reached_limit:
                 logger.info(f"Scraping page {page_num}...")
 
                 # Wait a bit for dynamic content to load
@@ -93,7 +102,8 @@ class GAFContractorScraper:
                 for idx, element in enumerate(contractor_elements):
                     if max_results and len(contractors) >= max_results:
                         logger.info(f"Reached max_results limit of {max_results}")
-                        return contractors
+                        reached_limit = True
+                        break
 
                     try:
                         contractor_data = self._extract_contractor_data(element, len(contractors))
@@ -102,25 +112,11 @@ class GAFContractorScraper:
                         # Skip duplicates
                         if contractor_name and contractor_name in seen_contractors:
                             logger.warning(f"Duplicate contractor found: {contractor_name}, stopping pagination")
-                            return contractors
+                            reached_limit = True
+                            break
 
                         if contractor_name:
                             seen_contractors.add(contractor_name)
-
-                        # Visit profile to get description
-                        if contractor_data.get('profile_url'):
-                            current_url = self.driver.current_url  # Save current page
-                            description, certifications = self._scrape_profile_description(contractor_data['profile_url'])
-                            contractor_data['description'] = description
-                            contractor_data['certifications'] = certifications
-
-                            # Navigate back to listing page
-                            self.driver.get(current_url)
-                            time.sleep(2)
-                            # Re-find contractor cards after navigation
-                            WebDriverWait(self.driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "article.certification-card"))
-                            )
 
                         contractors.append(contractor_data)
                         logger.info(f"Scraped contractor {len(contractors)}: {contractor_name or 'Unknown'}")
@@ -128,37 +124,52 @@ class GAFContractorScraper:
                         logger.error(f"Error extracting contractor {len(contractors) + 1}: {str(e)}")
                         continue
 
-                # Try to find and click next page button
-                try:
-                    # Look for pagination next button
-                    next_button = self.driver.find_element(By.CSS_SELECTOR, "a[aria-label='Next page'], button[aria-label='Next page'], .pagination__next:not(.disabled)")
+                # Try to find and click next page button if not reached limit
+                if not reached_limit:
+                    try:
+                        # Look for pagination next button
+                        next_button = self.driver.find_element(By.CSS_SELECTOR, "a[aria-label='Next page'], button[aria-label='Next page'], .pagination__next:not(.disabled)")
 
-                    # Check if next button is disabled or not present
-                    if "disabled" in next_button.get_attribute("class"):
-                        logger.info("Reached last page (next button disabled)")
+                        # Check if next button is disabled or not present
+                        if "disabled" in next_button.get_attribute("class"):
+                            logger.info("Reached last page (next button disabled)")
+                            break
+
+                        # Use JavaScript click to avoid interception
+                        logger.info("Clicking next page button...")
+                        self.driver.execute_script("arguments[0].click();", next_button)
+                        page_num += 1
+
+                        # Wait for new page to load
+                        time.sleep(5)
+
+                        # Wait for new contractor cards to load
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "article.certification-card"))
+                        )
+
+                    except NoSuchElementException:
+                        logger.info("No next page button found, reached end of results")
+                        break
+                    except TimeoutException:
+                        logger.warning("Timeout waiting for next page to load, stopping pagination")
                         break
 
-                    # Use JavaScript click to avoid interception
-                    logger.info("Clicking next page button...")
-                    self.driver.execute_script("arguments[0].click();", next_button)
-                    page_num += 1
-
-                    # Wait for new page to load
-                    time.sleep(5)
-
-                    # Wait for new contractor cards to load
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "article.certification-card"))
-                    )
-
-                except NoSuchElementException:
-                    logger.info("No next page button found, reached end of results")
-                    break
-                except TimeoutException:
-                    logger.warning("Timeout waiting for next page to load, stopping pagination")
-                    break
-
             logger.info(f"Successfully scraped {len(contractors)} contractors across {page_num} pages")
+
+            # Second pass: Enrich with descriptions from profile pages
+            logger.info("Starting second pass to fetch descriptions from profile pages...")
+            for contractor in contractors:
+                if contractor.get('profile_url'):
+                    try:
+                        description, certifications = self._scrape_profile_description(contractor['profile_url'])
+                        contractor['description'] = description
+                        contractor['certifications'] = certifications
+                        logger.info(f"Fetched description for: {contractor.get('name')}")
+                    except Exception as e:
+                        logger.error(f"Error fetching description for {contractor.get('name')}: {str(e)}")
+                        continue
+
             return contractors
 
         except TimeoutException:
@@ -308,6 +319,61 @@ class GAFContractorScraper:
             json.dump(contractors, f, indent=2, ensure_ascii=False)
         logger.info(f"Data saved to {output_path}")
 
+    def save_to_database(self, contractors, zipcode, distance):
+        """
+        Save scraped data to PostgreSQL database and track scrape run
+
+        Args:
+            contractors: List of contractor dictionaries
+            zipcode: ZIP code that was scraped
+            distance: Search radius in miles
+
+        Returns:
+            Dictionary with save statistics
+        """
+        db_manager = DatabaseManager()
+
+        # Record scrape run start
+        scrape_run_id = None
+        with db_manager.get_session() as session:
+            scrape_run = ScrapeRun(
+                zipcode=zipcode,
+                distance=distance,
+                contractors_found=len(contractors),
+                started_at=datetime.utcnow(),
+                status='running'
+            )
+            session.add(scrape_run)
+            session.commit()
+            scrape_run_id = scrape_run.id
+
+        try:
+            # Save contractors to database
+            stats = db_manager.save_contractors_batch(contractors)
+
+            # Update scrape run with completion stats
+            with db_manager.get_session() as session:
+                scrape_run = session.query(ScrapeRun).filter(ScrapeRun.id == scrape_run_id).first()
+                if scrape_run:
+                    scrape_run.contractors_new = stats['new']
+                    scrape_run.contractors_updated = stats['updated']
+                    scrape_run.completed_at = datetime.utcnow()
+                    scrape_run.status = 'completed'
+
+            logger.info(f"Database save complete: {stats}")
+            return stats
+
+        except Exception as e:
+            # Update scrape run with error
+            with db_manager.get_session() as session:
+                scrape_run = session.query(ScrapeRun).filter(ScrapeRun.id == scrape_run_id).first()
+                if scrape_run:
+                    scrape_run.completed_at = datetime.utcnow()
+                    scrape_run.status = 'failed'
+                    scrape_run.error_message = str(e)
+            logger.error(f"Database save failed: {str(e)}")
+            raise
+
 
 def main():
     """Main execution function"""
@@ -316,20 +382,34 @@ def main():
     try:
         scraper.start()
 
-        # Scrape contractors for ZIP code 10013
-        # Set max_results=5 for testing with descriptions, None for all
+        # Configuration
+        zipcode = "10013"
+        distance = 25
+        max_results = 10  # Limit for testing with profile scraping
+
+        # Scrape contractors
         contractors = scraper.scrape_contractors(
-            zipcode="10013",
-            distance=25,
-            max_results=5  # Limit for testing with profile scraping
+            zipcode=zipcode,
+            distance=distance,
+            max_results=max_results
         )
 
-        # Save results to Docker volume path
+        # Save to database
+        stats = scraper.save_to_database(contractors, zipcode, distance)
+
+        print(f"\n{'='*60}")
+        print(f"Successfully scraped {len(contractors)} contractors")
+        print(f"{'='*60}")
+        print(f"Database save statistics:")
+        print(f"  - New contractors: {stats['new']}")
+        print(f"  - Updated contractors: {stats['updated']}")
+        print(f"  - Unchanged contractors: {stats['unchanged']}")
+        print(f"{'='*60}")
+
+        # Also save to JSON for backup/debugging
         output_path = "/app/data/contractors_raw.json"
         scraper.save_to_json(contractors, output_path)
-
-        print(f"\nSuccessfully scraped {len(contractors)} contractors")
-        print(f"Data saved to {output_path}")
+        print(f"Backup JSON saved to {output_path}")
 
     finally:
         scraper.close()
