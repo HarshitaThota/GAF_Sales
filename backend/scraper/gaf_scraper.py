@@ -17,7 +17,8 @@ import sys
 sys.path.insert(0, '/app')
 
 from backend.db.connection import DatabaseManager
-from backend.db.models import ScrapeRun
+from backend.db.models import ScrapeRun, Contractor
+from backend.ai.insights_generator import InsightsGenerator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -372,6 +373,34 @@ class GAFContractorScraper:
         try:
             # Save contractors to database
             stats = db_manager.save_contractors_batch(contractors)
+
+            # Generate AI insights for contractors without insights
+            logger.info("Generating AI insights for contractors...")
+            insights_generator = InsightsGenerator()
+            insights_count = 0
+
+            for contractor_data in contractors:
+                try:
+                    profile_url = contractor_data.get('profile_url')
+                    if not profile_url:
+                        continue
+
+                    with db_manager.get_session() as session:
+                        contractor = session.query(Contractor).filter(
+                            Contractor.profile_url == profile_url
+                        ).first()
+
+                        if contractor and not contractor.ai_insights:
+                            insights = insights_generator.generate_insights(contractor_data)
+                            if insights:
+                                contractor.ai_insights = [insights]
+                                session.commit()
+                                insights_count += 1
+                                logger.info(f"Generated insights for: {contractor_data.get('name')}")
+                except Exception as e:
+                    logger.error(f"Error generating insights for {contractor_data.get('name')}: {e}")
+
+            logger.info(f"Generated insights for {insights_count} contractors")
 
             # Update scrape run with completion stats
             with db_manager.get_session() as session:

@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 from backend.scraper.gaf_scraper import GAFContractorScraper
 from backend.db.connection import DatabaseManager
 from backend.db.models import Contractor, ScrapeRun
+from backend.ai.insights_generator import InsightsGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class IncrementalScraper:
     def __init__(self, headless=True):
         self.scraper = GAFContractorScraper(headless=headless)
         self.db_manager = DatabaseManager()
+        self.insights_generator = InsightsGenerator()
 
     def should_rescrape_profile(self, existing: Contractor, listing_data: Dict) -> Tuple[bool, str]:
         """
@@ -162,6 +164,21 @@ class IncrementalScraper:
                     new_stats = self.db_manager.save_contractors_batch([contractor_data])
                     stats['new_contractors'] += new_stats['new']
 
+                    # Generate AI insights for new contractor
+                    try:
+                        insights = self.insights_generator.generate_insights(contractor_data)
+                        if insights:
+                            with self.db_manager.get_session() as session:
+                                contractor = session.query(Contractor).filter(
+                                    Contractor.profile_url == contractor_data['profile_url']
+                                ).first()
+                                if contractor:
+                                    contractor.ai_insights = [insights]
+                                    session.commit()
+                                    logger.info(f"Generated insights for new contractor: {contractor_data.get('name')}")
+                    except Exception as e:
+                        logger.error(f"Error generating insights for {contractor_data.get('name')}: {e}")
+
                 except Exception as e:
                     logger.error(f"Error scraping new profile {contractor_data.get('name')}: {e}")
 
@@ -179,6 +196,21 @@ class IncrementalScraper:
                     # Save immediately to database
                     rescrape_stats = self.db_manager.save_contractors_batch([contractor_data])
                     stats['profiles_rescraped'] += rescrape_stats['updated']
+
+                    # Regenerate AI insights for re-scraped contractor
+                    try:
+                        insights = self.insights_generator.generate_insights(contractor_data)
+                        if insights:
+                            with self.db_manager.get_session() as session:
+                                contractor = session.query(Contractor).filter(
+                                    Contractor.profile_url == contractor_data['profile_url']
+                                ).first()
+                                if contractor:
+                                    contractor.ai_insights = [insights]
+                                    session.commit()
+                                    logger.info(f"Regenerated insights for {contractor_data.get('name')}")
+                    except Exception as e:
+                        logger.error(f"Error regenerating insights for {contractor_data.get('name')}: {e}")
 
                 except Exception as e:
                     logger.error(f"Error re-scraping profile {contractor_data.get('name')}: {e}")
